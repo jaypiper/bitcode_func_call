@@ -28,6 +28,11 @@
 
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
+
+#include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/IR/Instruction.h>
+
 #include <iostream>
 
 using namespace llvm;
@@ -62,14 +67,39 @@ struct FuncPtrPass : public ModulePass {
   bool runOnModule(Module &M) override {
     errs() << "Hello: ";
     errs().write_escaped(M.getName()) << '\n';
-    M.dump();
+    // M.dump();
+    for (Module::iterator fi = M.begin(), fe = M.end(); fi != fe; fi++) {
+      Function &f = *fi;
+      std::cout <<"Name: " << f.getName().data() << std::endl;
+
+    }
     errs()<<"------------------------------\n";
+    return false;
+  }
+};
+
+struct FuncPass: public FunctionPass {
+  static char ID; // Pass identification, replacement for typeid
+  FuncPass() : FunctionPass(ID) {}
+  bool runOnFunction(Function &F) override {
+    for (inst_iterator i = inst_begin(F), ie = inst_end(F); i != ie; i++) {
+      Instruction* I = &*i;
+      CallInst* callInst = dyn_cast<CallInst>(I);
+      if(callInst){
+        std::string callFuncName = callInst->getCalledFunction()->getName().str();
+        if(callFuncName != "llvm.dbg.value") {
+          errs() << callInst->getDebugLoc().getLine() << " : " << callFuncName << "\n";
+        }
+
+      }
+    }
     return false;
   }
 };
 
 
 char FuncPtrPass::ID = 0;
+char FuncPass::ID = 0;
 static RegisterPass<FuncPtrPass> X("funcptrpass", "Print function call instruction");
 
 static cl::opt<std::string>
@@ -92,7 +122,6 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-
   llvm::legacy::PassManager Passes;
 
   ///Remove functions' optnone attribute in LLVM5.0
@@ -102,6 +131,7 @@ int main(int argc, char **argv) {
 
   /// Your pass to print Function and Call Instructions
   Passes.add(new FuncPtrPass());
+  Passes.add(new FuncPass());
   Passes.run(*M.get());
 }
 
