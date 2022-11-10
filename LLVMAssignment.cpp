@@ -84,7 +84,7 @@ struct FuncPtrPass : public ModulePass {
     for (Module::iterator fi = M.begin(), fe = M.end(); fi != fe; fi++) {
       Function &f = *fi;
       if(!f.getName().startswith("llvm.dbg")) {
-        visitFunction(&f, NULL);
+        visitFunction(&f, NULL, fMap);
       }
     }
     Log("============ANS============\n");
@@ -92,33 +92,46 @@ struct FuncPtrPass : public ModulePass {
     return false;
   }
 
-  void visitFunction(Function* F, CallInst* parentInst) {
+  void visitFunction(Function* F, CallInst* parentInst, std::map<Value*, std::set<Function*>> &parentMap) {
+    Log("visit topmap = " << &parentMap << "\n");
     Log("[" << F->getName() << "]......\n");
+    if(parentInst) Log(*parentInst << "\n");
     std::queue<BasicBlock*> bbPool;        // unvisited bb list
+    std::queue<std::map<Value*, std::set<Function*>>> bbMap;
+    std::queue<BasicBlock*> bbParent;
     bbPool.push(&F->getEntryBlock());
+    bbMap.push({});
+    bbParent.push(NULL);
+    std::map<Value*, std::set<Function*>> topMap;
+    BasicBlock* parentbb;
     if(parentInst) {
       for(int i = 0; i < parentInst->getNumArgOperands(); i++) {
         Log(i << ": " << parentInst->getArgOperand(i) << " " << F->getArg(i) << "\n");
         if(Function* argFunc = dyn_cast<Function>(parentInst->getArgOperand(i)))
-          insert2Map(fMap, argFunc, F->getArg(i));
+          insert2Map(bbMap.front(), argFunc, F->getArg(i));
         else
-          mapCopy(fMap, parentInst->getArgOperand(i), F->getArg(i));
+          mapCopy2(parentMap, parentInst->getArgOperand(i), bbMap.front(), F->getArg(i));
       }
     }
     while(!bbPool.empty()) {
       BasicBlock* bb = bbPool.front();
       bbPool.pop();
+      topMap = bbMap.front();
+      bbMap.pop();
+      parentbb = bbParent.front();
+      bbParent.pop();
+
       for(auto inst = bb->begin(); inst != bb->end(); inst++) {
         if(PHINode* phi = dyn_cast<PHINode>(inst)) {
           //TODO
           Log( "phi typeid=" << phi->getType()->getTypeID() << "\n");
-          for(BasicBlock** inBBPtr = phi->block_begin(); inBBPtr != phi->block_end(); inBBPtr++) {
-            BasicBlock* inBB = *inBBPtr;
+          if(parentbb) {
+            BasicBlock* inBB = parentbb;
             Value* inVal = phi->getIncomingValueForBlock(inBB);
             if(Function* inFunc = dyn_cast<Function>(inVal)) {
-              insert2Map(fMap, inFunc, phi);
+              insert2Map(topMap, inFunc, phi);
             } else {
-              mapCopy(fMap, inVal, phi);
+              mapCopy(topMap, inVal, phi);
             }
 
           }
@@ -127,15 +140,19 @@ struct FuncPtrPass : public ModulePass {
           if (callee && !callee->getName().startswith("llvm.dbg")) {  // direct call
             Log("call " << callee->getName() << " " << callInst->getDebugLoc().getLine() << "\n");
             addCallLine(callInst->getDebugLoc().getLine(), callee);
-            visitFunction(callee, callInst);
+            visitFunction(callee, callInst, topMap);
+            Log("topmap = " << &topMap << "\n");
           } else if(!callee) {
             Value* calleeValue = callInst->getCalledValue();
-            Log("callee " << calleeValue << "\n");
-            if(fMap.find(calleeValue) != fMap.end()) {
-              for (Function* f : fMap[calleeValue]) {
+            if(topMap.find(calleeValue) != topMap.end()) {
+              for (Function* f : topMap[calleeValue]) {
+                Log("abss " << topMap[calleeValue].size() << " " << f << " " << callInst << " " << calleeValue<< "\n");
+                for(Function* tmp : topMap[calleeValue]) Log(tmp->getName() << " ");
+                Log("\n");
                 Log("call " << f->getName() << " " << callInst->getDebugLoc().getLine() << "\n");
                 addCallLine(callInst->getDebugLoc().getLine(), f);
-                visitFunction(f, callInst);
+                Log("topmap = " << &topMap << "\n");
+                visitFunction(f, callInst, topMap);
               }
 
             }
@@ -152,11 +169,13 @@ struct FuncPtrPass : public ModulePass {
           }
           for (BasicBlock *succ: branchInst->successors()) {
             bbPool.push(succ);
+            bbMap.push(topMap);
+            bbParent.push(bb);
           }
         } else if (ReturnInst* retInst = dyn_cast<ReturnInst>(inst)) {
           if(parentInst) {
-            mapCopy(fMap, retInst->getReturnValue(), parentInst);
             Log("ret " << parentInst << " " << retInst->getReturnValue() << "\n" << *inst << "\n");
+            mapCopy2(topMap, retInst->getReturnValue(), parentMap, parentInst);
           }
           Log("[finish " << F->getName() << "]\n");
         }
@@ -165,6 +184,7 @@ struct FuncPtrPass : public ModulePass {
   }
   void insert2Map(std::map<Value*, std::set<Function*>> &map, Value* funVal, Value* val) {
     if(Function* f = dyn_cast<Function>(funVal)) {
+      Log("insert " << f->getName() << " " << f << " to " << val << " in " << &map << "\n");
       if(map.find(val) == map.end()) {
         map[val] = std::set<Function*> {f};
       } else {
@@ -178,6 +198,16 @@ struct FuncPtrPass : public ModulePass {
       for(Function* func : map[oldVal]) {
         Log("copy " << func->getName() << " from " << oldVal << " to " << newVal << "\n");
         insert2Map(map, func, newVal);
+      }
+    }
+  }
+
+  void mapCopy2(std::map<Value*, std::set<Function*>> &oldMap, Value* oldVal, std::map<Value*, std::set<Function*>> &newMap, Value* newVal) {
+    Log((oldMap.find(oldVal) == oldMap.end()) << " oldmap  " << &oldMap << " oldVal " << oldVal << " new " << &newMap<<  "\n");
+    if(oldMap.find(oldVal) != oldMap.end()){
+      for(Function* func : oldMap[oldVal]) {
+        Log("copy2 " << func->getName() << " from " << oldVal << " to " << newVal << "\n");
+        insert2Map(newMap, func, newVal);
       }
     }
   }
