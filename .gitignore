@@ -1,0 +1,4 @@
+tests/*.txt
+tests/*.bc
+tests/*.ll
+tests/*.log
