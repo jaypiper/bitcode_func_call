@@ -98,8 +98,11 @@ struct FuncPtrPass : public ModulePass {
     bbPool.push(&F->getEntryBlock());
     if(parentInst) {
       for(int i = 0; i < parentInst->getNumArgOperands(); i++) {
-        mapCopy(fMap, parentInst->getArgOperand(i), F->getArg(i));
         Log(i << ": " << parentInst->getArgOperand(i) << " " << F->getArg(i) << "\n");
+        if(Function* argFunc = dyn_cast<Function>(parentInst->getArgOperand(i)))
+          insert2Map(fMap, argFunc, F->getArg(i));
+        else
+          mapCopy(fMap, parentInst->getArgOperand(i), F->getArg(i));
       }
     }
     while(!bbPool.empty()) {
@@ -150,8 +153,12 @@ struct FuncPtrPass : public ModulePass {
           for (BasicBlock *succ: branchInst->successors()) {
             bbPool.push(succ);
           }
-        } else {
-
+        } else if (ReturnInst* retInst = dyn_cast<ReturnInst>(inst)) {
+          if(parentInst) {
+            mapCopy(fMap, retInst->getReturnValue(), parentInst);
+            Log("ret " << parentInst << " " << retInst->getReturnValue() << "\n" << *inst << "\n");
+          }
+          Log("[finish " << F->getName() << "]\n");
         }
       }
     }
