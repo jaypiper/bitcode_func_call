@@ -76,6 +76,7 @@ struct FuncPtrPass : public ModulePass {
   FuncPtrPass() : ModulePass(ID) {}
   std::map<Value*, std::set<Function*>> FuncMap;
   std::map<int, std::set<Function*>> CallLine;
+  std::map<Value*, std::set<Function*>> fMap;
   bool runOnModule(Module &M) override {
     Log("Hello: ");
     LogRef(M.getName()); Log('\n');
@@ -92,11 +93,14 @@ struct FuncPtrPass : public ModulePass {
   }
 
   void visitFunction(Function* F, CallInst* parentInst) {
-    std::map<Value*, std::set<Function*>> fMap;
+    Log("[" << F->getName() << "]......\n");
     std::queue<BasicBlock*> bbPool;        // unvisited bb list
     bbPool.push(&F->getEntryBlock());
     if(parentInst) {
-      // TODO: add args to fmap
+      for(int i = 0; i < parentInst->getNumArgOperands(); i++) {
+        mapCopy(fMap, parentInst->getArgOperand(i), F->getArg(i));
+        Log(i << ": " << parentInst->getArgOperand(i) << " " << F->getArg(i) << "\n");
+      }
     }
     while(!bbPool.empty()) {
       BasicBlock* bb = bbPool.front();
@@ -107,14 +111,11 @@ struct FuncPtrPass : public ModulePass {
           Log( "phi typeid=" << phi->getType()->getTypeID() << "\n");
           for(BasicBlock** inBBPtr = phi->block_begin(); inBBPtr != phi->block_end(); inBBPtr++) {
             BasicBlock* inBB = *inBBPtr;
-            Log(*(inBB->getFirstNonPHI()) << "\n");
             Value* inVal = phi->getIncomingValueForBlock(inBB);
             if(Function* inFunc = dyn_cast<Function>(inVal)) {
               insert2Map(fMap, inFunc, phi);
-              Log("phi " << phi << " " << inFunc->getName() << "\n");
-            } else if(fMap.find(inVal) != fMap.end()){
-              for(Function* func : fMap[inVal]) insert2Map(fMap, func, phi);
-              Log("phi " << phi << "  ..\n");
+            } else {
+              mapCopy(fMap, inVal, phi);
             }
 
           }
@@ -161,6 +162,15 @@ struct FuncPtrPass : public ModulePass {
         map[val] = std::set<Function*> {f};
       } else {
         map[val].insert(f);
+      }
+    }
+  }
+
+  void mapCopy(std::map<Value*, std::set<Function*>> &map, Value* oldVal, Value* newVal) {
+    if(map.find(oldVal) != map.end()){
+      for(Function* func : map[oldVal]) {
+        Log("copy " << func->getName() << " from " << oldVal << " to " << newVal << "\n");
+        insert2Map(map, func, newVal);
       }
     }
   }
