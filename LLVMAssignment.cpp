@@ -176,7 +176,12 @@ struct FuncPtrPass : public ModulePass {
   void disp_callLine() {
     for(auto pair = CallLine.begin(); pair != CallLine.end(); pair ++) {
       errs() << pair->first << " : ";
-      for(Function* func : pair->second) errs() << func->getName();
+      int is_start = 1;
+      for(Function* func : pair->second) {
+        if(!is_start) errs() << ", ";
+        else is_start = 0;
+        errs() << func->getName();
+      }
       errs() << "\n";
     }
   }
