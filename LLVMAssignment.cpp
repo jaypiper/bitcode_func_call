@@ -143,11 +143,11 @@ struct FuncPtrPass : public ModulePass {
               // TODO: handle unreachable branch
             }
 
-            for (BasicBlock *succ: branchInst->successors()) {
-              bbPool.push(succ);
-            }
           } else {
             // TDOO
+          }
+          for (BasicBlock *succ: branchInst->successors()) {
+            bbPool.push(succ);
           }
         } else {
 
