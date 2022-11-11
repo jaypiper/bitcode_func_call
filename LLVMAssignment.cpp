@@ -98,10 +98,10 @@ struct FuncPtrPass : public ModulePass {
     if(parentInst) Log(*parentInst << "\n");
     std::queue<BasicBlock*> bbPool;        // unvisited bb list
     std::queue<std::map<Value*, std::set<Function*>>> bbMap;
-    std::queue<BasicBlock*> bbParent;
+    // std::queue<BasicBlock*> bbParent;
     bbPool.push(&F->getEntryBlock());
     bbMap.push({});
-    bbParent.push(NULL);
+    // bbParent.push(NULL);
     std::map<Value*, std::set<Function*>> topMap;
     BasicBlock* parentbb;
     if(parentInst) {
@@ -118,15 +118,15 @@ struct FuncPtrPass : public ModulePass {
       bbPool.pop();
       topMap = bbMap.front();
       bbMap.pop();
-      parentbb = bbParent.front();
-      bbParent.pop();
+      // parentbb = bbParent.front();
+      // bbParent.pop();
 
       for(auto inst = bb->begin(); inst != bb->end(); inst++) {
         if(PHINode* phi = dyn_cast<PHINode>(inst)) {
           //TODO
           Log( "phi typeid=" << phi->getType()->getTypeID() << "\n");
-          if(parentbb) {
-            BasicBlock* inBB = parentbb;
+          for(BasicBlock** inBBPtr = phi->block_begin(); inBBPtr != phi->block_end(); inBBPtr++) {
+            BasicBlock* inBB = *inBBPtr;
             Value* inVal = phi->getIncomingValueForBlock(inBB);
             if(Function* inFunc = dyn_cast<Function>(inVal)) {
               insert2Map(topMap, inFunc, phi);
@@ -170,7 +170,7 @@ struct FuncPtrPass : public ModulePass {
           for (BasicBlock *succ: branchInst->successors()) {
             bbPool.push(succ);
             bbMap.push(topMap);
-            bbParent.push(bb);
+            // bbParent.push(bb);
           }
         } else if (ReturnInst* retInst = dyn_cast<ReturnInst>(inst)) {
           if(parentInst) {
