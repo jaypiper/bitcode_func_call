@@ -93,6 +93,7 @@ struct FuncPtrPass : public ModulePass {
   }
 
   void visitFunction(Function* F, CallInst* parentInst, std::map<Value*, std::set<Function*>> &parentMap) {
+    if(F->isDeclaration()) return;
     Log("visit topmap = " << &parentMap << "\n");
     Log("[" << F->getName() << "]......\n");
     if(parentInst) Log(*parentInst << "\n");
