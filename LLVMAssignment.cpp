@@ -36,7 +36,7 @@
 #include <iostream>
 #include <queue>
 
-#define LOCAL_DEBUG
+// #define LOCAL_DEBUG
 
 #ifdef LOCAL_DEBUG
   #define Log(...) errs() << __VA_ARGS__
@@ -121,7 +121,6 @@ struct FuncPtrPass : public ModulePass {
       if (visitedBlock.find(bb) != visitedBlock.end()) continue;
       for(auto inst = bb->begin(); inst != bb->end(); inst++) {
         if(PHINode* phi = dyn_cast<PHINode>(inst)) {
-          //TODO
           Log( "phi typeid=" << phi->getType()->getTypeID() << "\n");
           for(BasicBlock** inBBPtr = phi->block_begin(); inBBPtr != phi->block_end(); inBBPtr++) {
             BasicBlock* inBB = *inBBPtr;
@@ -156,6 +155,7 @@ struct FuncPtrPass : public ModulePass {
             }
           }
         } else if (BranchInst * branchInst = dyn_cast<BranchInst>(inst)) {
+#if 0
           if(branchInst->isConditional()) {
             Value* cond = branchInst->getCondition();
             if (ICmpInst * cmpInst = dyn_cast<ICmpInst>(cond)) {
@@ -165,11 +165,11 @@ struct FuncPtrPass : public ModulePass {
           } else {
             // TDOO
           }
+#endif
           for (BasicBlock *succ: branchInst->successors()) {
             bbPool.push(succ);
             bbMap.push(topMap);
             visitedBlock.insert(bb);
-            // bbParent.push(bb);
           }
           break;
         } else if (ReturnInst* retInst = dyn_cast<ReturnInst>(inst)) {
